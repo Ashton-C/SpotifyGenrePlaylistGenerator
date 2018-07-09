@@ -5,7 +5,7 @@ import pygn
 import spotipy
 import time
 import spotipy.util as sp_util
-from SpotifySec import *
+from config import *
 from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOauthError
 from spotipy.client import SpotifyException
 
@@ -14,6 +14,7 @@ SPOTIPY_CLIENT_ID = '6bf27521c6ff4eb2bf72698c63a1d9e8'
 SPOTIPY_REDIRECT_URI = 'http://localhost/'
 clientID = '1984033224-5834A5143CE87D68376F48BF28A6BEE4'
 userID3 = '280167715556773759-7E254039A6A562F4E93D2BE60834523E'
+start_time = time.time()
 
 
 class Song():
@@ -39,14 +40,28 @@ class Genre():
 def main():
     print_header()
     username, spotify = authenticate_user()
-    total_songs_in_lib = get_total_tracks(spotify)
+    answer = input("What would you like to do? Your options are: Delete playlists from last time, Create new playlists. Please enter 1 or 2.\n")
+    if answer == '1':
+        to_del = input("How many playlists would you like deleted?\n")
+        for i in range(0, int(to_del)+1):
+            temp_id = spotify.user_playlists(username, 1, 0)
+            for item in temp_id['items']:
+                list_id = item['id']
+            spotify.user_playlist_unfollow(username, list_id)
+        continue_ = input("Deleted {} playlists! Would you like to now create playlists? Y/N?\n".format(to_del))
+        if continue_.upper() == 'Y':
+            answer = '2'
+        else:
+            pass
+    if answer == '2':
+        more_less = input("Would you like broad playlists (less) or narrow playlists (more)? Broad/Narrow?\n")
+        total_songs_in_lib = get_total_tracks(spotify)
 #    songs = make_songs(total_songs_in_lib, spotify)
-    songs = make_songs(2, spotify)
-    genres = determine_playlists(songs)
-    playlists = set_playlists(genres, songs)
-    for i in playlists:
-        print("The songs in {} playlist are {}".format(i.name, i.playlist))
-    print(make_playlists(playlists, spotify, username))
+        songs = make_songs(total_songs_in_lib, spotify, more_less)
+        genres = determine_playlists(songs)
+        playlists = set_playlists(genres, songs)
+        print(make_playlists(playlists, spotify, username))
+        print("--- Execution took {} seconds ---".format(time.time() - start_time))
 
 
 def print_header():
@@ -99,7 +114,7 @@ def search_for_song(temp_query, temp_artist):
             pass
 
 
-def make_songs(songs_wanted, spotify):
+def make_songs(songs_wanted, spotify, broad_narrow):
     songs = []
     counter = 0
     for i in range(songs_wanted):
@@ -109,12 +124,13 @@ def make_songs(songs_wanted, spotify):
         except TypeError as not_found:
             continue
         temp_song = Song(temp_data[0], temp_data[1], temp_data[2])
-        temp_song.get_genre(temp_genre1, temp_genre2)
+        if broad_narrow.upper() == "BROAD":
+            temp_song.get_genre(temp_genre1, "N/A")
+        if broad_narrow.upper() == "NARROW":
+            temp_song.get_genre(temp_genre1, temp_genre2)
         songs.append(temp_song)
         counter += 1
-        if counter == 200:
-            time.sleep(1)
-            counter = 0
+        print("Songs data found: {}/{}".format(counter, songs_wanted), end="\r")
     return songs
 
 
@@ -147,13 +163,15 @@ def choose_playlists_to_make(playlists):
 
 
 def make_playlists(playlists, spotify, user):
+    counter = 0
     print("Now making playlists by genres. Here are the playlists we are making: {}".format(playlists))
     for list in playlists:
+        counter += 1
         spotify.user_playlist_create(user, list.name, public=True)
         temp_list_data = spotify.user_playlists(user, 1, 0)
         for item in temp_list_data['items']:
             list_id = item['id']
-        time.sleep(1)
+#        time.sleep(0.015)
         offset = 0
         playlist_length = len(list.playlist)
         if playlist_length > 100:
@@ -162,7 +180,7 @@ def make_playlists(playlists, spotify, user):
                 offset += 99
         else:
             spotify.user_playlist_add_tracks(user, playlist_id=list_id, tracks=list.playlist)
-    return "All done!!! Your playlists are created and populated!"
+    return "All done!!! Your playlists are created and populated! Created {} playlists.".format(counter)
 
 
 def authenticate_client():
@@ -175,7 +193,7 @@ def authenticate_client():
     try:
         # Get an auth token for this user
         client_credentials = SpotifyClientCredentials(client_id=SPOTIPY_CLIENT_ID,
-                                                      client_secret=SpotipySec.SPOTIPY_CLIENT_SECRET)
+                                                      client_secret=SPOTIPY_CLIENT_SECRET)
 
         spotify = spotipy.Spotify(client_credentials_manager=client_credentials)
         return spotify
