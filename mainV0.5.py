@@ -5,13 +5,11 @@ import pygn
 import spotipy
 import time
 import spotipy.util as sp_util
-from GraceNoteUserID import *
 from config import *
 from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOauthError
 from spotipy.client import SpotifyException
 
 gn_client_ID = '1984033224-5834A5143CE87D68376F48BF28A6BEE4'
-gn_user_ID = userID3
 start_time = time.time()
 test_amount = 15
 
@@ -41,6 +39,7 @@ class Genre():
 def main():
     print_header()
     username, spotify = authenticate_user()
+    gn_user_ID = get_gn_user_id()
     answer = input("What would you like to do? Your options are: Delete playlists from last time, Create new playlists. Please enter 1 or 2.\n")
     if answer == '1':
         to_del = input("How many playlists would you like deleted?\n")
@@ -58,7 +57,7 @@ def main():
         more_less = input("Would you like broad playlists (less) or narrow playlists (more)? Broad/Narrow?\n")
         total_songs_in_lib = get_total_tracks(spotify)
 #    songs = make_songs(total_songs_in_lib, spotify)
-        songs = make_songs(total_songs_in_lib, spotify, more_less)
+        songs = make_songs(test_amount, spotify, more_less, gn_user_ID)
         genres = determine_playlists(songs)
         playlists = set_playlists(genres, songs)
         print(make_playlists(playlists, spotify, username))
@@ -96,7 +95,13 @@ def get_total_tracks(spotify):
     return temp_total
 
 
-def search_for_song(temp_query, temp_artist):
+def get_gn_user_id():
+    f = open('grace_note_user_id.txt', 'r')
+    gn_user_id = f.readline()
+    return gn_user_id
+
+
+def search_for_song(temp_query, temp_artist, gn_user_ID):
     ''' This function takes all the Spotify data retrieved and sends it through
         GraceNote in order to get the proper genres for each song. '''
     # It is in a large try/except block because of an error that would pop
@@ -126,7 +131,7 @@ def search_for_song(temp_query, temp_artist):
         pass
 
 
-def make_songs(songs_wanted, spotify, broad_narrow):
+def make_songs(songs_wanted, spotify, broad_narrow, gn_user_ID):
     ''' Here we take all the gathered data, song title, Spotify ID, Artists,
         and genre, and put it all into a Song object. '''
     songs = []
@@ -135,7 +140,7 @@ def make_songs(songs_wanted, spotify, broad_narrow):
         temp_data = get_data(spotify, i)
         # here is where we actually see if a song is found or not.
         try:
-            temp_genre1, temp_genre2 = search_for_song(temp_data[0], temp_data[1])
+            temp_genre1, temp_genre2 = search_for_song(temp_data[0], temp_data[1], gn_user_ID)
         except TypeError as not_found:
             continue
         temp_song = Song(temp_data[0], temp_data[1], temp_data[2])
