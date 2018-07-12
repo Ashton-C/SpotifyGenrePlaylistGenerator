@@ -5,19 +5,19 @@ import pygn
 import spotipy
 import time
 import spotipy.util as sp_util
+from GraceNoteUserID import *
 from config import *
 from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOauthError
 from spotipy.client import SpotifyException
 
-scope = 'user-library-read, playlist-modify-public'
-SPOTIPY_CLIENT_ID = '6bf27521c6ff4eb2bf72698c63a1d9e8'
-SPOTIPY_REDIRECT_URI = 'http://localhost/'
-clientID = '1984033224-5834A5143CE87D68376F48BF28A6BEE4'
-userID3 = '280167715556773759-7E254039A6A562F4E93D2BE60834523E'
+gn_client_ID = '1984033224-5834A5143CE87D68376F48BF28A6BEE4'
+gn_user_ID = userID3
 start_time = time.time()
+test_amount = 15
 
 
 class Song():
+    # this is the basic data structure for all the song data
     def __init__(self, title, artist, id):
         self.id = id
         self.title = title
@@ -29,6 +29,7 @@ class Song():
 
 
 class Genre():
+    # this class is used for holding the song id's to put back into spotify.
     def __init__(self, genre):
         self.name = genre
         self.playlist = []
@@ -65,6 +66,7 @@ def main():
 
 
 def print_header():
+    ''' Prints the header for the program... pretty basic tbh '''
     print('$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$')
     print('')
     print('            Spotify Playlist By Genre Generator')
@@ -73,6 +75,8 @@ def print_header():
 
 
 def get_data(spotify, offset):
+    ''' This function calls the Spotify API for each song, one at a time
+        to find the artist, track name, and Spotify ID, and returns them. '''
     tracks_response = spotify.current_user_saved_tracks(limit=1,
                                                         offset=offset)
     for item in tracks_response['items']:
@@ -80,14 +84,12 @@ def get_data(spotify, offset):
             temp_art = artist['name']
         temp_track = item['track']['name']
         temp_id = item['track']['id']
-    if temp_id is None or temp_art is None or temp_track is None:
-        temp_track = "N/A"
-        temp_art = "N/A"
-        temp_id = "N/A"
     return temp_track, temp_art, temp_id
 
 
 def get_total_tracks(spotify):
+    ''' Simple function to get the total tracks to look for, this is used
+    in the make_songs() function '''
     total_response = spotify.current_user_saved_tracks(limit=1,
                                                        offset=0)
     temp_total = total_response['total']
@@ -95,46 +97,63 @@ def get_total_tracks(spotify):
 
 
 def search_for_song(temp_query, temp_artist):
-        try:
-            metadata = pygn.search(clientID=clientID, userID=userID3, track=temp_query,
-                                   artist=temp_artist)
-            temp_genre1 = metadata['genre']['1']['TEXT']
-            temp_genre2 = metadata['genre']['2']['TEXT']
-            if temp_genre1 is None or temp_genre2 is None:
-                temp_genre1 == "N/A"
-                temp_genre2 == "N/A"
-            return temp_genre1, temp_genre2
-        except TypeError as y:
-            temp_genre1 = 'N/A'
-            temp_genre2 = 'N/A'
-        except KeyError as e:
-            temp_genre1 = 'N/A'
-            temp_genre2 = 'N/A'
-        except UnboundLocalError as idk:
-            pass
+    ''' This function takes all the Spotify data retrieved and sends it through
+        GraceNote in order to get the proper genres for each song. '''
+    # It is in a large try/except block because of an error that would pop
+    # up when GraceNote couldnt find a song.
+    try:
+        metadata = pygn.search(clientID=gn_client_ID, userID=gn_user_ID, track=temp_query,
+                               artist=temp_artist)
+        # GraceNote has 3 seperate genres for every song, more and more specific
+        # when running, option 1(Broad), will only use the first line,
+        # where as the 'Narrow' option will use the second line and the first line.
+        temp_genre1 = metadata['genre']['1']['TEXT']
+        temp_genre2 = metadata['genre']['2']['TEXT']
+        if temp_genre1 is None or temp_genre2 is None:
+            temp_genre1 == "N/A"
+            temp_genre2 == "N/A"
+        return temp_genre1, temp_genre2
+    # these type errors are when the song is not found
+    except TypeError as y:
+        temp_genre1 = 'N/A'
+        temp_genre2 = 'N/A'
+    # these key errors are when the song is found but has no genre
+    except KeyError as e:
+        temp_genre1 = 'N/A'
+        temp_genre2 = 'N/A'
+    # I kept getting this, I didnt know what to do, so I just pass it...
+    except UnboundLocalError as idk:
+        pass
 
 
 def make_songs(songs_wanted, spotify, broad_narrow):
+    ''' Here we take all the gathered data, song title, Spotify ID, Artists,
+        and genre, and put it all into a Song object. '''
     songs = []
     counter = 0
     for i in range(songs_wanted):
         temp_data = get_data(spotify, i)
+        # here is where we actually see if a song is found or not.
         try:
             temp_genre1, temp_genre2 = search_for_song(temp_data[0], temp_data[1])
         except TypeError as not_found:
             continue
         temp_song = Song(temp_data[0], temp_data[1], temp_data[2])
+        # logic for Narrow playlists or broad playlists
         if broad_narrow.upper() == "BROAD":
             temp_song.get_genre(temp_genre1, "N/A")
         if broad_narrow.upper() == "NARROW":
             temp_song.get_genre(temp_genre1, temp_genre2)
         songs.append(temp_song)
         counter += 1
+        # this line will be replaced by an actual loading bar, but works for now
         print("Songs data found: {}/{}".format(counter, songs_wanted), end="\r")
     return songs
 
 
 def determine_playlists(song_list):
+    ''' This function creates all the genre objects, so that the next function
+        can populate their playlist arrays. '''
     genres = []
     for song in song_list:
         genres.append(song.genre1)
@@ -148,6 +167,8 @@ def determine_playlists(song_list):
 
 
 def set_playlists(genres, songs):
+    ''' Simply takes the genre objects and fills their playlist arrays via the
+        add_song() method. '''
     for genre in genres:
         for song in songs:
             if song.genre1 == genre.name or song.genre2 == genre.name:
@@ -156,6 +177,9 @@ def set_playlists(genres, songs):
 
 
 def choose_playlists_to_make(playlists):
+    ''' NOT USED CURRENTLY '''
+    # I would like to use this when I implement a GUI, but the program has
+    # changed significantly since I wrote it, so I will most likely rewrite it.
     print("What playlists would you like to add to your Spotify account?")
     ptm = input("Your options are {}".format(playlists.keys()))
     ptm = ptm.title()
@@ -163,15 +187,17 @@ def choose_playlists_to_make(playlists):
 
 
 def make_playlists(playlists, spotify, user):
+    ''' Final function in the main program, this connects with Spotify to create
+        the new playlists. It uses the Genre objects which contain the name of
+        the new playlist, as well as a list of all the songs in their playlist
+        arrays. '''
     counter = 0
-    print("Now making playlists by genres. Here are the playlists we are making: {}".format(playlists))
     for list in playlists:
         counter += 1
         spotify.user_playlist_create(user, list.name, public=True)
         temp_list_data = spotify.user_playlists(user, 1, 0)
         for item in temp_list_data['items']:
             list_id = item['id']
-#        time.sleep(0.015)
         offset = 0
         playlist_length = len(list.playlist)
         if playlist_length > 100:
@@ -184,6 +210,8 @@ def make_playlists(playlists, spotify, user):
 
 
 def authenticate_client():
+    # I didn't write this function, and for the first bit I didn't even understand it
+    # at this point it works and I'd rather not mess with it.
     """
     Using credentials from the environment variables, attempt to authenticate
     with the spotify web API.  If successful,
@@ -203,6 +231,8 @@ def authenticate_client():
 
 
 def authenticate_user():
+    # Same as above, didn't write, and I don't feel like messing with it.
+    # Written by
     """
     Prompt the user for their username and authenticate them against the
     Spotify API. (NOTE: You will have to paste the URL from your browser back
