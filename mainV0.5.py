@@ -74,16 +74,17 @@ def print_header():
 
 
 def get_gn_id():
-    try:
-        if os.path.exists('grace_note_user_id.txt'):
-            f = open('grace_note_user_id.txt', 'r')
-            gn_user_id = f.readline()
-            return gn_user_id
-    except FileNotFoundError:
+    if os.path.exists('grace_note_user_id.txt'):
+        f = open('grace_note_user_id.txt', 'r')
+        gn_user_id = f.readline()
+        return gn_user_id
+        print("You GN user ID is: {}".format(gn_user_id))
+    else:
         generate_gn_user_id.main()
         f = open('grace_note_user_id.txt', 'r')
         gn_user_id = f.readline()
         return gn_user_id
+        print("You GN user ID is: {}".format(gn_user_id))
 
 
 def get_data(spotify, offset):
@@ -96,6 +97,7 @@ def get_data(spotify, offset):
             temp_art = artist['name']
         temp_track = item['track']['name']
         temp_id = item['track']['id']
+        print("Song Found!")
     return temp_track, temp_art, temp_id
 
 
@@ -105,13 +107,8 @@ def get_total_tracks(spotify):
     total_response = spotify.current_user_saved_tracks(limit=1,
                                                        offset=0)
     temp_total = total_response['total']
+    print("Total songs to make: {}".format(temp_total))
     return temp_total
-
-
-def get_gn_user_id():
-    f = open('grace_note_user_id.txt', 'r')
-    gn_user_id = f.readline()
-    return gn_user_id
 
 
 def search_for_song(temp_query, temp_artist, gn_user_ID):
@@ -127,6 +124,7 @@ def search_for_song(temp_query, temp_artist, gn_user_ID):
         # where as the 'Narrow' option will use the second line and the first line.
         temp_genre1 = metadata['genre']['1']['TEXT']
         temp_genre2 = metadata['genre']['2']['TEXT']
+        print("Genre Found!")
         if temp_genre1 is None or temp_genre2 is None:
             temp_genre1 == "N/A"
             temp_genre2 == "N/A"
