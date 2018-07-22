@@ -56,8 +56,8 @@ def main():
     if answer == '2':
         more_less = input("Would you like broad playlists (less) or narrow playlists (more)? Broad/Narrow?\n")
         total_songs_in_lib = get_total_tracks(spotify)
-#    songs = make_songs(total_songs_in_lib, spotify)
-        songs = make_songs(test_amount, spotify, more_less, gn_user_ID)
+        songs = make_songs(total_songs_in_lib, spotify, more_less, gn_user_ID)
+#        songs = make_songs(test_amount, spotify, more_less, gn_user_ID)
         genres = determine_playlists(songs)
         playlists = set_playlists(genres, songs)
         print(make_playlists(playlists, spotify, username))
