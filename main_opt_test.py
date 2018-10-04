@@ -9,6 +9,7 @@ import generate_gn_user_id
 import config
 from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOauthError, SpotifyOAuth
 from spotipy.client import SpotifyException
+import concurrent.futures
 
 gn_client_ID = '1984033224-5834A5143CE87D68376F48BF28A6BEE4'
 start_time = time.time()
@@ -122,7 +123,7 @@ def search_for_song(temp_query, temp_artist, gn_user_ID):
     # up when GraceNote couldnt find a song.
     try:
         metadata = pygn.search(clientID=gn_client_ID, userID=gn_user_ID, track=temp_query,
-                               artist=temp_artist)
+                                            artist=temp_artist)
         # GraceNote has 3 seperate genres for every song, more and more specific
         # when running, option 1(Broad), will only use the first line,
         # where as the 'Narrow' option will use the second line and the first line.
@@ -159,20 +160,21 @@ def make_songs(songs_wanted, spotify, broad_narrow, gn_user_ID, token):
         for x in temp_data:
             # here is where we actually see if a song is found or not.
             try:
-                temp_genre1, temp_genre2 = search_for_song(x.title, x.artist, gn_user_ID)
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    temp_genre1, temp_genre2 = executor.submit(search_for_song(x.title, x.artist, gn_user_ID))
+                    # logic for Narrow playlists or broad playlists
+                    if broad_narrow.upper() == "BROAD":
+                        x.get_genre(temp_genre1, "N/A")
+                    if broad_narrow.upper() == "NARROW":
+                        x.get_genre(temp_genre1, temp_genre2)
+                    songs.append(x)
+                    # this line will be replaced by an actual loading bar, but works for now
+                    counter += 1
+        #            if counter == 2:
+        #                SpotifyOAuth.get_access_token(token)
+                    print("Songs data found: {}/{}".format(counter, songs_wanted), end="\r")
             except TypeError as not_found:
                 continue
-            # logic for Narrow playlists or broad playlists
-            if broad_narrow.upper() == "BROAD":
-                x.get_genre(temp_genre1, "N/A")
-            if broad_narrow.upper() == "NARROW":
-                x.get_genre(temp_genre1, temp_genre2)
-            songs.append(x)
-            # this line will be replaced by an actual loading bar, but works for now
-            counter += 1
-#            if counter == 2:
-#                SpotifyOAuth.get_access_token(token)
-            print("Songs data found: {}/{}".format(counter, songs_wanted), end="\r")
     return songs
 
 
