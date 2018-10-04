@@ -5,13 +5,14 @@ import pygn
 import spotipy
 import time
 import spotipy.util as sp_util
-from config import *
+import generate_gn_user_id
+import config
 from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOauthError
 from spotipy.client import SpotifyException
 
 gn_client_ID = '1984033224-5834A5143CE87D68376F48BF28A6BEE4'
 start_time = time.time()
-test_amount = 15
+test_amount = 45
 
 
 class Song():
@@ -39,7 +40,7 @@ class Genre():
 def main():
     print_header()
     username, spotify = authenticate_user()
-    gn_user_ID = get_gn_user_id()
+    gn_user_ID = get_gn_id()
     answer = input("What would you like to do? Your options are: Delete playlists from last time, Create new playlists. Please enter 1 or 2.\n")
     if answer == '1':
         to_del = input("How many playlists would you like deleted?\n")
@@ -56,8 +57,8 @@ def main():
     if answer == '2':
         more_less = input("Would you like broad playlists (less) or narrow playlists (more)? Broad/Narrow?\n")
         total_songs_in_lib = get_total_tracks(spotify)
-#    songs = make_songs(total_songs_in_lib, spotify)
         songs = make_songs(test_amount, spotify, more_less, gn_user_ID)
+#        songs = make_songs(test_amount, spotify, more_less, gn_user_ID)
         genres = determine_playlists(songs)
         playlists = set_playlists(genres, songs)
         print(make_playlists(playlists, spotify, username))
@@ -73,6 +74,20 @@ def print_header():
     print('$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$')
 
 
+def get_gn_id():
+    if os.path.exists('grace_note_user_id.txt'):
+        f = open('grace_note_user_id.txt', 'r')
+        gn_user_id = f.readline()
+        return gn_user_id
+        print("You GN user ID is: {}".format(gn_user_id))
+    else:
+        generate_gn_user_id.main()
+        f = open('grace_note_user_id.txt', 'r')
+        gn_user_id = f.readline()
+        return gn_user_id
+        print("You GN user ID is: {}".format(gn_user_id))
+
+
 def get_data(spotify, offset):
     ''' This function calls the Spotify API for each song, one at a time
         to find the artist, track name, and Spotify ID, and returns them. '''
@@ -83,6 +98,7 @@ def get_data(spotify, offset):
             temp_art = artist['name']
         temp_track = item['track']['name']
         temp_id = item['track']['id']
+        print("Song Found!")
     return temp_track, temp_art, temp_id
 
 
@@ -92,13 +108,8 @@ def get_total_tracks(spotify):
     total_response = spotify.current_user_saved_tracks(limit=1,
                                                        offset=0)
     temp_total = total_response['total']
+    print("Total songs to make: {}".format(temp_total))
     return temp_total
-
-
-def get_gn_user_id():
-    f = open('grace_note_user_id.txt', 'r')
-    gn_user_id = f.readline()
-    return gn_user_id
 
 
 def search_for_song(temp_query, temp_artist, gn_user_ID):
@@ -114,6 +125,7 @@ def search_for_song(temp_query, temp_artist, gn_user_ID):
         # where as the 'Narrow' option will use the second line and the first line.
         temp_genre1 = metadata['genre']['1']['TEXT']
         temp_genre2 = metadata['genre']['2']['TEXT']
+        print("Genre Found!")
         if temp_genre1 is None or temp_genre2 is None:
             temp_genre1 == "N/A"
             temp_genre2 == "N/A"
@@ -225,8 +237,8 @@ def authenticate_client():
     """
     try:
         # Get an auth token for this user
-        client_credentials = SpotifyClientCredentials(client_id=SPOTIPY_CLIENT_ID,
-                                                      client_secret=SPOTIPY_CLIENT_SECRET)
+        client_credentials = SpotifyClientCredentials(client_id=config.SPOTIPY_CLIENT_ID,
+                                                      client_secret=config.SPOTIPY_CLIENT_SECRET)
 
         spotify = spotipy.Spotify(client_credentials_manager=client_credentials)
         return spotify
@@ -261,10 +273,10 @@ def authenticate_user():
 
     try:
         # Get an auth token for this user
-        token = sp_util.prompt_for_user_token(username, scope=scope,
-                                              client_id=SPOTIPY_CLIENT_ID,
-                                              client_secret=SPOTIPY_CLIENT_SECRET,
-                                              redirect_uri=SPOTIPY_REDIRECT_URI)
+        token = sp_util.prompt_for_user_token(username, scope=config.scope,
+                                              client_id=config.SPOTIPY_CLIENT_ID,
+                                              client_secret=config.SPOTIPY_CLIENT_SECRET,
+                                              redirect_uri=config.SPOTIPY_REDIRECT_URI)
 
         spotify = spotipy.Spotify(auth=token)
         return username, spotify
