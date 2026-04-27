@@ -1,37 +1,35 @@
 # Spotify Genre Playlist Generator by Ashton Christensen
-import sys
 import os
-import pygn
-import spotipy
+import sys
 import time
-import spotipy.util as sp_util
-import generate_gn_user_id
-import config
-from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOauthError, SpotifyOAuth
-from spotipy.client import SpotifyException
 import concurrent.futures
 
-gn_client_ID = '1984033224-5834A5143CE87D68376F48BF28A6BEE4'
+import spotipy
+import pylast
+from dotenv import load_dotenv
+from spotipy.oauth2 import SpotifyOAuth
+from spotipy.client import SpotifyException
+
+load_dotenv()
+
 start_time = time.time()
-test_amount = 45
+
+_lastfm_key = os.environ.get('LASTFM_API_KEY')
+lastfm_network = pylast.LastFMNetwork(api_key=_lastfm_key) if _lastfm_key else None
 
 
-class Song():
-    # this is the basic data structure for all the song data
+class Song:
     def __init__(self, title, artist, id):
         self.id = id
         self.title = title
         self.artist = artist
-
-    def get_genre(self, genre1, genre2):
-        self.genre1 = genre1
-        self.genre2 = genre2
+        self.genre1 = None
+        self.genre2 = None
 
 
-class Genre():
-    # this class is used for holding the song id's to put back into spotify.
-    def __init__(self, genre):
-        self.name = genre
+class Genre:
+    def __init__(self, name):
+        self.name = name
         self.playlist = []
 
     def add_song(self, song_id):
@@ -39,163 +37,209 @@ class Genre():
 
 
 def main():
+    if not lastfm_network:
+        print("Error: LASTFM_API_KEY not set in .env")
+        sys.exit(1)
+
     print_header()
-    username, spotify, token = authenticate_user()
-    gn_user_ID = get_gn_id()
-    answer = input("What would you like to do? Your options are: Delete playlists from last time, Create new playlists. Please enter 1 or 2.\n")
+    username, spotify = authenticate_user()
+
+    answer = input(
+        "\nWhat would you like to do?\n"
+        "  1) Delete playlists from last time\n"
+        "  2) Create new playlists\n"
+        "Enter 1 or 2: "
+    ).strip()
+
     if answer == '1':
-        to_del = input("How many playlists would you like deleted?\n")
-        for i in range(0, int(to_del)+1):
-            temp_id = spotify.user_playlists(username, 1, 0)
-            for item in temp_id['items']:
-                list_id = item['id']
-            spotify.user_playlist_unfollow(username, list_id)
-        continue_ = input("Deleted {} playlists! Would you like to now create playlists? Y/N?\n".format(to_del))
-        if continue_.upper() == 'Y':
+        to_del = int(input("How many playlists would you like deleted? "))
+        for _ in range(to_del):
+            result = spotify.current_user_playlists(limit=1)
+            for item in result['items']:
+                spotify.current_user_unfollow_playlist(item['id'])
+        print(f"Deleted {to_del} playlists!")
+        if input("Create playlists now? Y/N: ").strip().upper() == 'Y':
             answer = '2'
-        else:
-            pass
+
     if answer == '2':
-        more_less = input("Would you like broad playlists (less) or narrow playlists (more)? Broad/Narrow?\n")
-        total_songs_in_lib = get_total_tracks(spotify)
-        songs = make_songs(total_songs_in_lib, spotify, more_less, gn_user_ID, token)
-#        songs = make_songs(test_amount, spotify, more_less, gn_user_ID)
-        genres = determine_playlists(songs)
-        playlists = set_playlists(genres, songs)
+        broad_narrow = input(
+            "Broad (fewer playlists, top genre only) or Narrow (more playlists, two genres per track)? "
+            "Broad/Narrow: "
+        ).strip().upper()
+        total = get_total_tracks(spotify)
+        tagged, untagged = fetch_and_tag_songs(total, spotify, broad_narrow)
+
+        if untagged:
+            print(f"\nRunning audio feature fallback for {len(untagged)} untagged songs...")
+            assign_genres_by_audio(untagged, tagged, spotify)
+
+        all_songs = tagged + [s for s in untagged if s.genre1]
+        genres = determine_playlists(all_songs)
+        playlists = set_playlists(genres, all_songs)
         print(make_playlists(playlists, spotify, username))
-        print("--- Execution took {} seconds ---".format(time.time() - start_time))
+        print(f"--- Execution took {time.time() - start_time:.1f} seconds ---")
 
 
 def print_header():
-    ''' Prints the header for the program... pretty basic tbh '''
-    print('$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$')
+    print('=' * 66)
     print('')
     print('            Spotify Playlist By Genre Generator')
     print('')
-    print('$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$')
+    print('=' * 66)
 
 
-def get_gn_id():
-    if os.path.exists('grace_note_user_id.txt'):
-        f = open('grace_note_user_id.txt', 'r')
-        gn_user_id = f.readline()
-        return gn_user_id
-        print("You GN user ID is: {}".format(gn_user_id))
-    else:
-        generate_gn_user_id.main()
-        f = open('grace_note_user_id.txt', 'r')
-        gn_user_id = f.readline()
-        return gn_user_id
-        print("You GN user ID is: {}".format(gn_user_id))
-
-
-def get_data(spotify, offset):
-    ''' This function calls the Spotify API for each song, one at a time
-        to find the artist, track name, and Spotify ID, and returns them. '''
-    songs = []
-    tracks_response = spotify.current_user_saved_tracks(limit=20,
-                                                        offset=offset)
-    for item in tracks_response['items']:
-        for artist in item['track']['album']['artists']:
-            temp_art = artist['name']
-        temp_track = item['track']['name']
-        temp_id = item['track']['id']
-        temp_song = Song(temp_track, temp_art, temp_id)
-        songs.append(temp_song)
-        print("Song Found!")
-    return songs
+def authenticate_user():
+    scope = 'user-library-read playlist-modify-public playlist-modify-private'
+    auth_manager = SpotifyOAuth(
+        client_id=os.environ['SPOTIPY_CLIENT_ID'],
+        client_secret=os.environ['SPOTIPY_CLIENT_SECRET'],
+        redirect_uri=os.environ['SPOTIPY_REDIRECT_URI'],
+        scope=scope
+    )
+    spotify = spotipy.Spotify(auth_manager=auth_manager)
+    username = spotify.current_user()['id']
+    print(f"Authenticated as: {username}")
+    return username, spotify
 
 
 def get_total_tracks(spotify):
-    ''' Simple function to get the total tracks to look for, this is used
-    in the make_songs() function '''
-    total_response = spotify.current_user_saved_tracks(limit=1,
-                                                       offset=0)
-    temp_total = total_response['total']
-    print("Total songs to make: {}".format(temp_total))
-    return temp_total
+    response = spotify.current_user_saved_tracks(limit=1, offset=0)
+    total = response['total']
+    print(f"Total songs in library: {total}")
+    return total
 
 
-def search_for_song(temp_query, temp_artist, gn_user_ID):
-    ''' This function takes all the Spotify data retrieved and sends it through
-        GraceNote in order to get the proper genres for each song. '''
-    # It is in a large try/except block because of an error that would pop
-    # up when GraceNote couldnt find a song.
+def search_for_song(title, artist):
+    """Returns (genre1, genre2) from Last.fm tags, or (None, None) if not found."""
     try:
-        metadata = pygn.search(clientID=gn_client_ID, userID=gn_user_ID, track=temp_query,
-                                            artist=temp_artist)
-        # GraceNote has 3 seperate genres for every song, more and more specific
-        # when running, option 1(Broad), will only use the first line,
-        # where as the 'Narrow' option will use the second line and the first line.
-        temp_genre1 = metadata['genre']['1']['TEXT']
-        temp_genre2 = metadata['genre']['2']['TEXT']
-        print("Genre Found!")
-        if temp_genre1 is None or temp_genre2 is None:
-            temp_genre1 == "N/A"
-            temp_genre2 == "N/A"
-        return temp_genre1, temp_genre2
-    # these type errors are when the song is not found
-    except TypeError as y:
-        temp_genre1 = 'N/A'
-        temp_genre2 = 'N/A'
-    # these key errors are when the song is found but has no genre
-    except KeyError as e:
-        temp_genre1 = 'N/A'
-        temp_genre2 = 'N/A'
-    # I kept getting this, I didnt know what to do, so I just pass it...
-    except UnboundLocalError as idk:
-        pass
+        track = lastfm_network.get_track(artist, title)
+        tags = track.get_top_tags(limit=5)
+        if not tags:
+            return None, None
+        genre1 = tags[0].item.get_name()
+        genre2 = tags[1].item.get_name() if len(tags) > 1 else None
+        return genre1, genre2
+    except pylast.WSError:
+        return None, None
+    except Exception:
+        return None, None
 
 
-def make_songs(songs_wanted, spotify, broad_narrow, gn_user_ID, token):
-    ''' Here we take all the gathered data, song title, Spotify ID, Artists,
-        and genre, and put it all into a Song object. '''
+def fetch_batch(spotify, offset):
+    response = spotify.current_user_saved_tracks(limit=20, offset=offset)
     songs = []
-    counter = 0
-    i = 0
-    # gets the songs data together
-    while int(i) < int(songs_wanted):
-        temp_data = get_data(spotify, i)
-        i += 20
-        for x in temp_data:
-            # here is where we actually see if a song is found or not.
-            try:
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    temp_genre1, temp_genre2 = executor.submit(search_for_song(x.title, x.artist, gn_user_ID))
-                    # logic for Narrow playlists or broad playlists
-                    if broad_narrow.upper() == "BROAD":
-                        x.get_genre(temp_genre1, "N/A")
-                    if broad_narrow.upper() == "NARROW":
-                        x.get_genre(temp_genre1, temp_genre2)
-                    songs.append(x)
-                    # this line will be replaced by an actual loading bar, but works for now
-                    counter += 1
-        #            if counter == 2:
-        #                SpotifyOAuth.get_access_token(token)
-                    print("Songs data found: {}/{}".format(counter, songs_wanted), end="\r")
-            except TypeError as not_found:
-                continue
+    for item in response['items']:
+        track = item['track']
+        if not track:
+            continue
+        artist = track['artists'][0]['name']
+        songs.append(Song(track['name'], artist, track['id']))
     return songs
 
 
-def determine_playlists(song_list):
-    ''' This function creates all the genre objects, so that the next function
-        can populate their playlist arrays. '''
-    genres = []
-    for song in song_list:
-        genres.append(song.genre1)
-        genres.append(song.genre2)
-    genres = list(set(genres))
-    genre_objects = []
-    for genre in genres:
-        temp_genre = Genre(genre)
-        genre_objects.append(temp_genre)
-    return genre_objects
+def fetch_and_tag_songs(total, spotify, broad_narrow):
+    """Fetches all liked songs in batches and looks up Last.fm tags concurrently."""
+    tagged, untagged = [], []
+    counter = 0
+    offset = 0
+
+    while offset < total:
+        batch = fetch_batch(spotify, offset)
+        offset += 20
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_song = {
+                executor.submit(search_for_song, s.title, s.artist): s
+                for s in batch
+            }
+            for future, song in future_to_song.items():
+                genre1, genre2 = future.result()
+                if genre1 is None:
+                    untagged.append(song)
+                else:
+                    song.genre1 = genre1
+                    song.genre2 = genre2 if broad_narrow == 'NARROW' else None
+                    tagged.append(song)
+                counter += 1
+                print(f"Songs processed: {counter}/{total}", end="\r")
+
+    print()
+    print(f"  Tagged by Last.fm: {len(tagged)} | Needs audio fallback: {len(untagged)}")
+    return tagged, untagged
+
+
+def assign_genres_by_audio(untagged_songs, tagged_songs, spotify):
+    """Assigns untagged songs to the nearest genre centroid using Spotify audio features."""
+    if not tagged_songs:
+        return
+
+    genre_track_ids = {}
+    for song in tagged_songs:
+        if song.genre1:
+            genre_track_ids.setdefault(song.genre1, []).append(song.id)
+
+    if not genre_track_ids:
+        return
+
+    feature_keys = [
+        'danceability', 'energy', 'valence', 'acousticness',
+        'instrumentalness', 'speechiness', 'tempo'
+    ]
+    max_tempo = 250.0
+
+    def normalize(feat):
+        return [feat[k] / (max_tempo if k == 'tempo' else 1.0) for k in feature_keys]
+
+    def batch_audio_features(ids):
+        results = {}
+        for i in range(0, len(ids), 50):
+            batch = spotify.audio_features(ids[i:i + 50]) or []
+            for f in batch:
+                if f:
+                    results[f['id']] = f
+        return results
+
+    # Build centroid per genre from tagged songs' audio features
+    genre_centroids = {}
+    for genre, ids in genre_track_ids.items():
+        features = batch_audio_features(ids)
+        if not features:
+            continue
+        vecs = [normalize(f) for f in features.values()]
+        dim = len(feature_keys)
+        centroid = [sum(v[i] for v in vecs) / len(vecs) for i in range(dim)]
+        genre_centroids[genre] = centroid
+
+    if not genre_centroids:
+        return
+
+    untagged_features = batch_audio_features([s.id for s in untagged_songs])
+
+    genres = list(genre_centroids.keys())
+    centroids = [genre_centroids[g] for g in genres]
+
+    for song in untagged_songs:
+        feat = untagged_features.get(song.id)
+        if not feat:
+            continue
+        vec = normalize(feat)
+        distances = [
+            sum((a - b) ** 2 for a, b in zip(vec, c)) for c in centroids
+        ]
+        song.genre1 = genres[distances.index(min(distances))]
+
+
+def determine_playlists(songs):
+    genre_names = set()
+    for song in songs:
+        if song.genre1:
+            genre_names.add(song.genre1)
+        if song.genre2:
+            genre_names.add(song.genre2)
+    return [Genre(g) for g in genre_names]
 
 
 def set_playlists(genres, songs):
-    ''' Simply takes the genre objects and fills their playlist arrays via the
-        add_song() method. '''
     for genre in genres:
         for song in songs:
             if song.genre1 == genre.name or song.genre2 == genre.name:
@@ -203,115 +247,19 @@ def set_playlists(genres, songs):
     return genres
 
 
-def choose_playlists_to_make(playlists):
-    ''' NOT USED CURRENTLY '''
-    # I would like to use this when I implement a GUI, but the program has
-    # changed significantly since I wrote it, so I will most likely rewrite it.
-    print("What playlists would you like to add to your Spotify account?")
-    ptm = input("Your options are {}".format(playlists.keys()))
-    ptm = ptm.title()
-    return ptm
-
-
 def make_playlists(playlists, spotify, user):
-    ''' Final function in the main program, this connects with Spotify to create
-        the new playlists. It uses the Genre objects which contain the name of
-        the new playlist, as well as a list of all the songs in their playlist
-        arrays. '''
     counter = 0
-    for list in playlists:
+    for genre in playlists:
+        if not genre.playlist:
+            continue
         counter += 1
-        spotify.user_playlist_create(user, list.name, public=True)
-        temp_list_data = spotify.user_playlists(user, 1, 0)
-        for item in temp_list_data['items']:
-            list_id = item['id']
-        offset = 0
-        playlist_length = len(list.playlist)
-        if playlist_length > 100:
-            while offset < playlist_length:
-                spotify.user_playlist_add_tracks(user, playlist_id=list_id, tracks=list.playlist[offset:offset+99])
-                offset += 99
-        else:
-            spotify.user_playlist_add_tracks(user, playlist_id=list_id, tracks=list.playlist)
-    return "All done!!! Your playlists are created and populated! Created {} playlists.".format(counter)
+        new_pl = spotify.user_playlist_create(user, genre.name, public=True)
+        playlist_id = new_pl['id']
+        ids = genre.playlist
+        for i in range(0, len(ids), 99):
+            spotify.playlist_add_items(playlist_id, ids[i:i + 99])
 
-
-def authenticate_client():
-    # I didn't write this function, and for the first bit I didn't even understand it
-    # at this point it works and I'd rather not mess with it.
-    """
-    Using credentials from the environment variables, attempt to authenticate
-    with the spotify web API.  If successful,
-    create a spotipy instance and return it.
-    :return: An authenticated Spotipy instance
-    """
-    try:
-        # Get an auth token for this user
-        client_credentials = SpotifyClientCredentials(client_id=config.SPOTIPY_CLIENT_ID,
-                                                      client_secret=config.SPOTIPY_CLIENT_SECRET)
-
-        spotify = spotipy.Spotify(client_credentials_manager=client_credentials)
-        return spotify
-    except SpotifyOauthError as e:
-        print('API credentials not set.  Please see README for instructions on setting credentials.')
-        sys.exit(1)
-
-
-def authenticate_user():
-    # Same as above, didn't write, and I don't feel like messing with it.
-    # Written by
-    """
-    Prompt the user for their username and authenticate them against the
-    Spotify API. (NOTE: You will have to paste the URL from your browser back
-    into the terminal) :return: (username, spotify) Where username is the
-    user's username and spotify is an authenticated spotify (spotipy) client
-    """
-    # Prompt the user for their username
-    username = input('\nWhat is your Spotify username: ')
-
-    cache_path = ".cache-" + username
-
-    if not os.path.isfile(cache_path):
-        print("""
-    You will now be directed to your browser in order to authenticate with
-    Spotify.
-    Once you log into Spotify, you will be redirected to a
-    "http://localhost/?code=..." URL.  Please copy that URL and
-    paste it back here in order to complete authentication.
-     """)
-        input("Press <Enter> to continue...")
-
-    try:
-        # Get an auth token for this user
-        token = sp_util.prompt_for_user_token(username, scope=config.scope,
-                                              client_id=config.SPOTIPY_CLIENT_ID,
-                                              client_secret=config.SPOTIPY_CLIENT_SECRET,
-                                              redirect_uri=config.SPOTIPY_REDIRECT_URI)
-
-        spotify = spotipy.Spotify(auth=token)
-        return username, spotify, token
-
-    except SpotifyException as e:
-        print('API credentials not set.  Please see README for instructions on setting credentials.')
-        sys.exit(1)
-    except SpotifyOauthError as e:
-        redirect_uri = os.environ.get('SPOTIPY_REDIRECT_URI')
-        if redirect_uri is not None:
-            print("""
-    Uh oh! It doesn't look like that URI was registered as a redirect URI for
-    your application.
-    Please check to make sure that "{}" is listed as a Redirect URI and then
-    Try again.'
-            """.format(redirect_uri))
-        else:
-            print("""
-    Uh oh! It doesn't look like you set a redirect URI for your application.
-    Please add
-    export SPOTIPY_REDIRECT_URI='http://localhost/'
-    to your `credentials.sh`, and then add "http://localhost/" as a Redirect
-    URI in your Spotify Application page.
-    Once that's done, try again.'""")
-        sys.exit(1)
+    return f"All done! Created {counter} playlists."
 
 
 if __name__ == '__main__':
