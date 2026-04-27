@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# Env files (contain secrets)
+backend/.env
+
+# Frontend build output (handled by frontend/.gitignore)
+frontend/node_modules/
+frontend/dist/
