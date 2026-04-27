@@ -1,4 +1,7 @@
 config.py
+.env
+.cache-*
+grace_note_user_id.txt
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

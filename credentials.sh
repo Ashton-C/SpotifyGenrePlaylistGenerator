@@ -1,2 +1,0 @@
-export SPOTIPY_CLIENT_ID='00fdf944926a403eb976a8a8171b0e54'
-export SPOTIPY_REDIRECT_URI='http://localhost/'
