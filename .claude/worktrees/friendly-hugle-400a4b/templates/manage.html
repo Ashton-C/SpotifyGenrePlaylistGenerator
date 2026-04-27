@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Manage Playlists{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="manage-header">
+    <h2>Your Playlists</h2>
+    <span class="playlist-count">{{ playlists | length }} playlists</span>
+  </div>
+
+  {% if not playlists %}
+    <p>No playlists found on your account.</p>
+  {% else %}
+    <form action="{{ url_for('delete_playlists') }}" method="post" id="manage-form">
+      <div class="manage-toolbar">
+        <button type="button" id="select-all" class="btn btn-secondary btn-sm">Select All</button>
+        <button type="button" id="deselect-all" class="btn btn-secondary btn-sm">Deselect All</button>
+        <button type="submit" class="btn btn-danger btn-sm" id="delete-btn" disabled
+                onclick="return confirm('Delete selected playlists? This cannot be undone.')">
+          Delete Selected
+        </button>
+        <span class="selected-count" id="selected-count"></span>
+      </div>
+
+      <table class="playlist-table">
+        <thead>
+          <tr>
+            <th class="col-check"></th>
+            <th>Name</th>
+            <th class="col-tracks">Tracks</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pl in playlists %}
+          <tr>
+            <td class="col-check">
+              <input type="checkbox" name="playlist_ids" value="{{ pl.id }}" class="pl-checkbox">
+            </td>
+            <td>
+              <a href="{{ pl.external_urls.spotify }}" target="_blank">{{ pl.name }}</a>
+            </td>
+            <td class="col-tracks">{{ pl.tracks.total }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </form>
+  {% endif %}
+</div>
+
+<script>
+  const checkboxes = document.querySelectorAll('.pl-checkbox');
+  const deleteBtn = document.getElementById('delete-btn');
+  const selectedCount = document.getElementById('selected-count');
+
+  function updateUI() {
+    const n = document.querySelectorAll('.pl-checkbox:checked').length;
+    deleteBtn.disabled = n === 0;
+    selectedCount.textContent = n > 0 ? `${n} selected` : '';
+  }
+
+  checkboxes.forEach(cb => cb.addEventListener('change', updateUI));
+
+  document.getElementById('select-all').addEventListener('click', () => {
+    checkboxes.forEach(cb => cb.checked = true);
+    updateUI();
+  });
+
+  document.getElementById('deselect-all').addEventListener('click', () => {
+    checkboxes.forEach(cb => cb.checked = false);
+    updateUI();
+  });
+</script>
+{% endblock %}

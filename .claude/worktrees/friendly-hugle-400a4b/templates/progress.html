@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Generating Playlists…{% endblock %}
+
+{% block content %}
+<div class="card" id="progress-card">
+  <h2>Generating <span class="badge">{{ mode }}</span> playlists…</h2>
+  <p id="status-text">Connecting to Spotify…</p>
+
+  <div class="progress-bar-wrap">
+    <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+  </div>
+  <p class="progress-label" id="progress-label"></p>
+</div>
+
+<div class="card hidden" id="done-card">
+  <h2>Done! 🎉</h2>
+  <p id="done-summary"></p>
+  <div id="playlist-list"></div>
+  <div class="done-actions">
+    <a href="{{ url_for('index') }}" class="btn btn-secondary">Generate Again</a>
+    <a href="{{ url_for('manage') }}" class="btn btn-primary">Manage Playlists</a>
+  </div>
+</div>
+
+<div class="card hidden error-card" id="error-card">
+  <h2>Something went wrong</h2>
+  <p id="error-text"></p>
+  <a href="{{ url_for('index') }}" class="btn btn-secondary">Try Again</a>
+</div>
+
+<script>
+  const progressCard = document.getElementById('progress-card');
+  const doneCard = document.getElementById('done-card');
+  const errorCard = document.getElementById('error-card');
+  const statusText = document.getElementById('status-text');
+  const progressBar = document.getElementById('progress-bar');
+  const progressLabel = document.getElementById('progress-label');
+  const doneSummary = document.getElementById('done-summary');
+  const playlistList = document.getElementById('playlist-list');
+  const errorText = document.getElementById('error-text');
+
+  const es = new EventSource("{{ url_for('stream') }}");
+
+  es.onmessage = function(e) {
+    const msg = JSON.parse(e.data);
+
+    if (msg.type === 'total') {
+      statusText.textContent = `Tagging ${msg.total} songs…`;
+
+    } else if (msg.type === 'progress') {
+      const pct = Math.round((msg.processed / msg.total) * 100);
+      progressBar.style.width = pct + '%';
+      progressLabel.textContent = `${msg.processed} / ${msg.total} songs tagged`;
+
+    } else if (msg.type === 'status') {
+      statusText.textContent = msg.msg;
+
+    } else if (msg.type === 'done') {
+      es.close();
+      progressCard.classList.add('hidden');
+
+      doneSummary.textContent =
+        `Created ${msg.created.length} playlists from ${msg.tagged} tagged songs` +
+        (msg.untagged > 0 ? ` + ${msg.untagged} assigned via audio features.` : '.');
+
+      if (msg.created.length > 0) {
+        const ul = document.createElement('ul');
+        ul.className = 'playlist-result-list';
+        msg.created.forEach(pl => {
+          const li = document.createElement('li');
+          li.innerHTML = `<a href="${pl.url}" target="_blank">${pl.name}</a> <span class="track-count">${pl.track_count} tracks</span>`;
+          ul.appendChild(li);
+        });
+        playlistList.appendChild(ul);
+      }
+
+      doneCard.classList.remove('hidden');
+
+    } else if (msg.type === 'error') {
+      es.close();
+      progressCard.classList.add('hidden');
+      errorText.textContent = msg.msg;
+      errorCard.classList.remove('hidden');
+    }
+  };
+
+  es.onerror = function() {
+    es.close();
+    progressCard.classList.add('hidden');
+    errorText.textContent = 'Lost connection to server. Check your terminal for errors.';
+    errorCard.classList.remove('hidden');
+  };
+</script>
+{% endblock %}

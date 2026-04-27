@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Genre Playlist Generator{% endblock %}
+
+{% block content %}
+{% if not user %}
+  <div class="hero">
+    <h1>Spotify Genre Playlist Generator</h1>
+    <p class="subtitle">
+      Reads your Liked Songs, looks up real track-level genre tags from Last.fm,
+      and sorts them into playlists automatically.
+    </p>
+    <a href="{{ url_for('login') }}" class="btn btn-primary btn-large">
+      Login with Spotify
+    </a>
+  </div>
+
+{% else %}
+  <div class="card">
+    <h2>Hey, {{ user.display_name or user.id }}!</h2>
+    <p>Choose how you want your playlists generated, then hit Generate.</p>
+
+    <form action="{{ url_for('generate') }}" method="post">
+      <div class="mode-picker">
+        <label class="mode-option">
+          <input type="radio" name="mode" value="BROAD" checked>
+          <div class="mode-card">
+            <strong>Broad</strong>
+            <span>One genre per track — fewer, bigger playlists.</span>
+          </div>
+        </label>
+        <label class="mode-option">
+          <input type="radio" name="mode" value="NARROW">
+          <div class="mode-card">
+            <strong>Narrow</strong>
+            <span>Two genres per track — more playlists, more specific.</span>
+          </div>
+        </label>
+      </div>
+
+      <button type="submit" class="btn btn-primary">Generate Playlists</button>
+    </form>
+  </div>
+{% endif %}
+{% endblock %}

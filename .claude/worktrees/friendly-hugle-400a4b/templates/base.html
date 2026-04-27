@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Genre Playlist Generator{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <nav>
+    <a href="{{ url_for('index') }}" class="nav-brand">🎵 Genre Playlists</a>
+    <div class="nav-links">
+      {% if user %}
+        <span class="nav-user">{{ user.display_name or user.id }}</span>
+        <a href="{{ url_for('manage') }}">Manage Playlists</a>
+        <a href="{{ url_for('logout') }}">Log out</a>
+      {% endif %}
+    </div>
+  </nav>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
